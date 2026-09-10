@@ -13,7 +13,9 @@ import static com.craftinginterpreters.lox.TokenType.EOF;
 
 public class Lox {
 
+    private static final Interpreter INTERPRETER = new Interpreter();
     static boolean hadError = false;
+    static boolean hadRuntimeError = false;
 
     public static void main(String[] args) throws IOException {
         if (args.length > 1) {
@@ -34,7 +36,8 @@ public class Lox {
         run(new String(bytes, Charset.defaultCharset()));
 
         // indicate an error in the exit code
-        if (hadError) System.exit(65);
+        // if (hadError) System.exit(65);
+        if (hadRuntimeError) System.exit(70);
     }
 
     // 如果您希望与解释器进行更亲密的对话，也可以以交互方式运行 jlox。
@@ -59,11 +62,8 @@ public class Lox {
         Parser parser = new Parser(tokens);
         Expr expoession = parser.parser();
         if (hadError) return;
-        System.out.println(new AstPrinter().print(expoession));
-
-//        for (Token token: tokens){
-//            System.out.println(token);
-//        }
+        // System.out.println(new AstPrinter().print(expoession));
+        INTERPRETER.interpret(expoession);
     }
 
     static void error(int line, String message){
@@ -85,5 +85,9 @@ public class Lox {
     }
 
 
-
+    static void runtimeError(RuntimeError error) {
+        System.err.println(error.getMessage() +
+                "\n[line " + error.token.line + "]");
+        hadRuntimeError = true;
+    }
 }
