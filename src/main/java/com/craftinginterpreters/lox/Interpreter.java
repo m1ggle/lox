@@ -1,16 +1,28 @@
 package com.craftinginterpreters.lox;
 
-public class Interpreter implements Expr.Visitor<Object> {
+import java.util.List;
+
+public class Interpreter implements Expr.Visitor<Object>,
+        Stmt.Visitor<Void> {
+
+    private Environment environment = new Environment();
 
     // The Interpreter’s public API is simply one method.
-    void interpret(Expr expression) {
+    void interpret(List<Stmt> statements) {
         try {
-            Object value = evaluate(expression);
-            System.out.println(stringify(value));
-
+            for (Stmt statement : statements) {
+                execute(statement);
+            }
         }catch (RuntimeError error) {
             Lox.runtimeError(error);
         }
+    }
+
+    @Override
+    public Object visitAssignExpr(Expr.Assign expr) {
+        Object value = evaluate(expr.value);
+        environment.assign(expr.name, value);
+        return value;
     }
 
     @Override
@@ -100,6 +112,44 @@ public class Interpreter implements Expr.Visitor<Object> {
 
     }
 
+    @Override
+    public Object visitVariableExpr(Expr.Variable expr) {
+        return environment.get(expr.name);
+    }
+
+    @Override
+    public Void visitBlockStmt(Stmt.Block stmt) {
+        executeBlock(stmt.statements, new Environment(environment));
+        return null;
+    }
+
+    @Override
+    public Void visitExpressionStmt(Stmt.Expression stmt) {
+        evaluate(stmt.expression);
+        return null;
+    }
+
+    @Override
+    public Void visitPrintStmt(Stmt.Print stmt) {
+        Object value = evaluate(stmt.expression);
+        System.out.println(stringify(value));
+        return null;
+    }
+
+    @Override
+    public Void visitVarStmt(Stmt.Var stmt) {
+        Object value  = null;
+        // 如果变量有值，我们进行评估，
+        if (stmt.initializer != null) {
+            value = evaluate(stmt.initializer);
+        }
+        // 如果没有初始化器，我们将值设为 null
+        // var a;
+        // print a; // 返回nil
+        environment.define(stmt.name.lexeme, value);
+        return null;
+    }
+
     private void checkNumberOperand(Token operator, Object operand) {
         if (operand instanceof Double) return;
         throw new RuntimeError(operator, "Operand must be a number.");
@@ -112,6 +162,31 @@ public class Interpreter implements Expr.Visitor<Object> {
 
     private Object evaluate(Expr expr) {
         return expr.accept(this);
+    }
+
+    private void execute(Stmt statement) {
+        statement.accept(this);
+    }
+
+
+    /**
+     * 要在给定作用域中执行代码，此方法会更新解释器的环境字段，
+     * 访问所有语句，然后恢复之前的值。在 Java 中，
+     * 始终使用 finally 子句来恢复之前的环境是很好的实践。
+     * 这样，即使抛出异常也能恢复环境。
+     */
+    private void executeBlock(List<Stmt> statements,
+                              Environment environment) {
+        Environment previous = this.environment;
+
+        try {
+            this.environment = environment;
+            for (Stmt statement : statements) {
+                execute(statement);
+            }
+        } finally {
+            this.environment = previous;
+        }
     }
 
     // Lox 遵循 Ruby 的简单规则：

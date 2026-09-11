@@ -1,20 +1,11 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
-/**
- * expression     → equality ;
- * equality       → comparison ( ( "!=" | "==" ) comparison )* ;
- * comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
- * term           → factor ( ( "-" | "+" ) factor )* ;
- * factor         → unary ( ( "/" | "*" ) unary )* ;
- * unary          → ( "!" | "-" ) unary
- *                | primary ;
- * primary        → NUMBER | STRING | "true" | "false" | "nil"
- *                | "(" expression ")" ;
- */
+
 class Parser {
     private static class ParserError extends RuntimeException {}
     private final List<Token> tokens;
@@ -24,6 +15,17 @@ class Parser {
         this.tokens = tokens;
     }
 
+    /**
+     * expression     → equality ;
+     * equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+     * comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+     * term           → factor ( ( "-" | "+" ) factor )* ;
+     * factor         → unary ( ( "/" | "*" ) unary )* ;
+     * unary          → ( "!" | "-" ) unary
+     *                | primary ;
+     * primary        → NUMBER | STRING | "true" | "false" | "nil"
+     *                | "(" expression ")" ;
+     */
     Expr parser() {
         try {
             return expression();
@@ -32,8 +34,111 @@ class Parser {
         }
     }
 
+    /**
+     * program        → statement* EOF ;
+     *
+     * statement      → exprStmt
+     *                | printStmt ;
+     *
+     * exprStmt       → expression ";" ;
+     * printStmt      → "print" expression ";" ;
+     */
+    List<Stmt> parse() {
+        List<Stmt> stmts = new ArrayList<>();
+        while (!isAtEnd()) {
+            stmts.add(declaration());
+        }
+        return stmts;
+
+    }
+
+    /**
+     * 在解析块或脚本中的一系列语句时反复调用的，
+     * 因此在解析器进入恐慌模式时同步是正确的地方。
+     * 整个方法的代码被包裹在一个 try 块中，
+     * 以捕获解析器开始错误恢复时抛出的异常。
+     * 这样就能返回到尝试解析下一条语句或声明
+     */
+    private Stmt declaration() {
+        try {
+            // 首先，它检查我们是否处于变量声明中，方法是查找开头的 var 关键字。
+            // 如果不是，它会继续到现有的 statement() 方法，该方法用于解析打印和表达式语句。
+            if(match(VAR)) return varDeclaration();
+            return statement();
+        } catch (ParserError error) {
+            synchronize();
+            return null;
+        }
+    }
+
+    private Stmt statement(){
+        if (match(PRINT)) return printStatement();
+        if (match(LEFT_BRACE))  return  new Stmt.Block(block());
+        return expressionStatement();
+    }
+
+    private Stmt expressionStatement() {
+        Expr expr = expression();
+        consume(SEMICOLON, "Expect ';' after expression.");
+        return new Stmt.Expression(expr);
+    }
+
+    /**
+     * 我们创建一个空列表，然后解析语句并将其添加到列表中，
+     * 直到遇到块的结束标记 `}`。注意循环还显式检查了 `isAtEnd()`。
+     * 我们必须小心避免陷入无限循环，即使是在解析无效代码时。
+     * 如果用户忘记闭合 `}`，解析器不应该卡住
+     */
+    private List<Stmt> block() {
+        List<Stmt> statements = new ArrayList<>();
+
+        while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            statements.add(declaration());
+        }
+        consume(RIGHT_BRACE, "Expect '}' after block.");
+        return statements;
+    }
+
+    private Stmt printStatement() {
+        Expr value = expression();
+        consume(SEMICOLON,"Expect ';' after value.");
+        return new Stmt.Print(value);
+    }
+
+    private Stmt varDeclaration() {
+        Token name = consume(IDENTIFIER, "Expect variable name");
+
+        Expr initializer = null;
+        if (match(EQUAL)) {
+            initializer = expression();
+        }
+
+        consume(SEMICOLON, "Expect ';' after variable declaration.");
+        return new Stmt.Var(name, initializer);
+    }
+
     private Expr expression() {
-        return equality();
+        //return equality();
+        return assignment();
+    }
+
+    // 创建赋值表达式节点之前检查左侧表达式的类型，
+    // 并确定它是一个什么样的赋值目标。
+    // 我们将 r-值表达式节点转换为 l-值表示形式
+    private Expr assignment() {
+        Expr expr = equality();
+
+        if (match(EQUAL)) {
+            Token equals = previous();
+            Expr value = assignment();
+
+            if (expr instanceof Expr.Variable) {
+                Token name = ((Expr.Variable)expr).name;
+                return new Expr.Assign(name, value);
+            }
+            error(equals, "Invalid assignment target.");
+        }
+        return expr;
     }
 
     private Expr equality() {
@@ -92,6 +197,10 @@ class Parser {
 
         if (match(NUMBER, STRING)) {
             return new Expr.Literal(previous().literal);
+        }
+
+        if (match(IDENTIFIER)) {
+            return new Expr.Variable(previous());
         }
 
         if (match(LEFT_PAREN)) {

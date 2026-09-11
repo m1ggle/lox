@@ -16,11 +16,22 @@ public class GenerateAst {
         }
         String outputDir = args[0];
         // 要生成类，它需要每种类型及其字段的某种描述
+        // 运算
         defineAst(outputDir, "Expr", Arrays.asList(
-                "Binary     : Expr left, Token operator, Expr right", // 二进制
+                "Assign     : Token name, Expr value",                // 赋值
+                "Binary     : Expr left, Token operator, Expr right", // 二元运算
                 "Grouping   : Expr expression",                       // 括号
                 "Literal    : Object value",                          // 字面量
-                "Unary      : Token operator, Expr right"             // 一元
+                "Unary      : Token operator, Expr right",            // 一元运算
+                "Variable   : Token name"                           // 可声明
+        ));
+
+        // 声明和状态
+        defineAst(outputDir, "Stmt", Arrays.asList(
+                "Block      : List<Stmt> statements",
+                "Expression : Expr expression",                     // 表达式
+                "Print      : Expr expression",                     // print
+                "Var        : Token name, Expr initializer"         // 变量声明
         ));
     }
 
