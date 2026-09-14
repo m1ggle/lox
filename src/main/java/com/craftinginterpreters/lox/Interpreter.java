@@ -130,6 +130,11 @@ public class Interpreter implements Expr.Visitor<Object>,
     }
 
     @Override
+    public Void visitBreakStmt(Stmt.Break stmt) {
+        throw new BreakException();
+    }
+
+    @Override
     public Void visitBlockStmt(Stmt.Block stmt) {
         executeBlock(stmt.statements, new Environment(environment));
         return null;
@@ -176,7 +181,12 @@ public class Interpreter implements Expr.Visitor<Object>,
     @Override
     public Void visitWhileStmt(Stmt.While stmt) {
         while (isTruthy(evaluate(stmt.condition))) {
-            execute(stmt.body);
+            // 捕获异常退出循环
+           try {
+               execute(stmt.body);
+           } catch (BreakException e) {
+               break;
+           }
         }
         return null;
     }

@@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.logging.LoggingPermission;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
@@ -11,6 +12,8 @@ class Parser {
     private static class ParserError extends RuntimeException {}
     private final List<Token> tokens;
     private int current = 0;
+    //  添加循环深度字段，静态检查 break 必须在循环内
+    private int loopDepth = 0;
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
@@ -77,6 +80,7 @@ class Parser {
         if (match(IF)) return ifStatement();
         if (match(PRINT)) return printStatement();
         if (match(WHILE)) return whileStatement();
+        if (match(BREAK)) return breakStatement();
         if (match(LEFT_BRACE))  return  new Stmt.Block(block());
         return expressionStatement();
     }
@@ -112,7 +116,9 @@ class Parser {
         }
         consume(RIGHT_PAREN, "Expect ')' after for clauses.");
 
+        loopDepth++;
         Stmt body = statement();
+        loopDepth--;
 
         if (increment != null) {
             body = new Stmt.Block(
@@ -181,8 +187,20 @@ class Parser {
         consume(LEFT_PAREN, "Expect '(' after while.");
         Expr condition = expression();
         consume(RIGHT_PAREN, "Expect ')' after condition.");
+        loopDepth++;
         Stmt body = statement();
+        loopDepth--;
         return new Stmt.While(condition, body);
+    }
+
+    private Stmt breakStatement() {
+        Token keywrod = previous();
+        if (loopDepth == 0) {
+            throw error(keywrod, "Break must be inside a loop.");
+        }
+        consume(SEMICOLON, "Expect ';' after break.");
+        return new Stmt.Break(keywrod);
+
     }
 
     private Stmt varDeclaration() {

@@ -29,6 +29,7 @@ public class GenerateAst {
 
         // 声明和状态
         defineAst(outputDir, "Stmt", Arrays.asList(
+                "Break      : Token keyword",
                 "Block      : List<Stmt> statements",
                 "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",
                 "Expression : Expr expression",                     // 表达式
