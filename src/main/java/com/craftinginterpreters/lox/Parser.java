@@ -65,6 +65,7 @@ class Parser {
      */
     private Stmt declaration() {
         try {
+            if (match(FUN)) return function("function");
             // 首先，它检查我们是否处于变量声明中，方法是查找开头的 var 关键字。
             // 如果不是，它会继续到现有的 statement() 方法，该方法用于解析打印和表达式语句。
             if(match(VAR)) return varDeclaration();
@@ -79,6 +80,7 @@ class Parser {
         if (match(FOR)) return forStatement();
         if (match(IF)) return ifStatement();
         if (match(PRINT)) return printStatement();
+        if (match(RETURN)) return returnStatement();
         if (match(WHILE)) return whileStatement();
         if (match(BREAK)) return breakStatement();
         if (match(LEFT_BRACE))  return  new Stmt.Block(block());
@@ -161,6 +163,27 @@ class Parser {
         return new Stmt.Expression(expr);
     }
 
+    private Stmt.Function function(String kind) {
+        Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
+        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        List<Token> parameters = new ArrayList<>();
+
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (parameters.size() >= 255) {
+                    error(peek(),"Can not have more than 255 parameters.");
+                }
+                parameters.add(
+                        consume(IDENTIFIER, "Expect parameter name.")
+                );
+            } while (match(COMMA));
+        }
+        consume(RIGHT_PAREN, "Expect ')' after parameters.");
+        consume(LEFT_BRACE, "Expect '{' before " + kind + "name.");
+        List<Stmt> body = block();
+        return new Stmt.Function(name,parameters,body);
+    }
+
     /**
      * 我们创建一个空列表，然后解析语句并将其添加到列表中，
      * 直到遇到块的结束标记 `}`。注意循环还显式检查了 `isAtEnd()`。
@@ -181,6 +204,24 @@ class Parser {
         Expr value = expression();
         consume(SEMICOLON,"Expect ';' after value.");
         return new Stmt.Print(value);
+    }
+
+    /**
+     * 在获取到之前消费过的返回关键字之后，我们查找一个值表达式。
+     * 由于许多不同的令牌都可能以表达式开头，因此很难确定是否存在返回值。
+     * 取而代之的是，我们检查它是否不存在。由于分号不能以表达式开头，
+     * 如果下一个令牌是分号，我们就知道那里没有值。
+     */
+    private Stmt returnStatement() {
+        Token keyword = previous();
+        Expr value = null;
+
+        if (!check(SEMICOLON)) {
+            value = expression();
+        }
+
+        consume(SEMICOLON, "Expect ';' after return value.");
+        return new Stmt.Return(keyword,value);
     }
 
     private Stmt whileStatement() {
@@ -306,7 +347,39 @@ class Parser {
             Expr right = unary();
             return new Expr.Unary(operator, right);
         }
-        return primary();
+        return call();
+    }
+
+    private Expr call() {
+        Expr expr = primary();
+
+        while(true) {
+            if (match(LEFT_PAREN)) {
+                expr = finisCall(expr);
+            } else {
+                break;
+            }
+        }
+        return expr;
+    }
+
+    private Expr finisCall(Expr callee){
+        List<Expr> arguments = new ArrayList<>();
+        if (!check(RIGHT_PAREN)) {
+            do {
+                // the java specification says a method can accept no more than 255 arguments
+                if (arguments.size() >= 255) {
+                    // 这里代码在遇到过多参数是会报告错误，但是不会抛出异常
+                    // 抛出异常适用于进入恐慌模式，
+                    error(peek(),"Can't have more then 255 arguments.");
+                }
+                arguments.add(expression());
+            } while (match(COMMA));
+        }
+
+        Token paren = consume(RIGHT_PAREN, "Expect ')' after argument.");
+
+        return new Expr.Call(callee,paren, arguments);
     }
 
     private Expr primary() {

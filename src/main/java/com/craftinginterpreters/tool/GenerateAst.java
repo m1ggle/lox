@@ -21,6 +21,7 @@ public class GenerateAst {
                 "Assign     : Token name, Expr value",                // 赋值
                 "Binary     : Expr left, Token operator, Expr right", // 二元运算
                 "Grouping   : Expr expression",                       // 括号
+                "Call       : Expr callee, Token paren, List<Expr> arguments",
                 "Literal    : Object value",                          // 字面量
                 "Logical    : Expr left, Token operator, Expr right",
                 "Unary      : Token operator, Expr right",            // 一元运算
@@ -33,7 +34,9 @@ public class GenerateAst {
                 "Block      : List<Stmt> statements",
                 "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",
                 "Expression : Expr expression",                     // 表达式
+                "Function   : Token name, List<Token> params, List<Stmt> body",
                 "Print      : Expr expression",                     // print
+                "Return     : Token keyword, Expr value",
                 "Var        : Token name, Expr initializer",        // 变量声明
                 "While      : Expr condition, Stmt body"            // while循环
         ));

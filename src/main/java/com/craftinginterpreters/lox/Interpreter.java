@@ -1,12 +1,37 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Interpreter implements Expr.Visitor<Object>,
         Stmt.Visitor<Void> {
 
-    private Environment environment = new Environment();
+    // private Environment environment = new Environment();
+    // 解释器的环境字段在进入和退出局部作用域时会改变。它跟踪当前环境。
+    // 这个新的 globals 字段持有对最外层全局环境的固定引用
+    final Environment globals = new Environment();
+    private Environment environment = globals;
 
+    Interpreter() {
+        // java 的匿名类，实现了LoxCallable, call的方法调用Java的对应实现，计算时间
+        globals.define("clock", new LoxCallable() {
+            @Override
+            public int arity() {
+                return 0;
+            }
+
+            @Override
+            public Object call(Interpreter interpreter,
+                               List<Object> arguments) {
+                return (double) System.currentTimeMillis() / 1000.0;
+            }
+
+            @Override
+            public String toString() {
+                return "<native fn>";
+            }
+        });
+    }
     // The Interpreter’s public API is simply one method.
     void interpret(List<Stmt> statements) {
         try {
@@ -85,6 +110,30 @@ public class Interpreter implements Expr.Visitor<Object>,
     }
 
     @Override
+    public Object visitCallExpr(Expr.Call expr) {
+        Object callee = evaluate(expr.callee);
+
+        List<Object> arguments = new ArrayList<>();
+        for (Expr argument : expr.arguments) {
+            arguments.add(evaluate(argument));
+        }
+
+        if (!(callee instanceof LoxCallable)) {
+            throw new RuntimeError(expr.paren, "Can only call functions and classes.");
+        }
+
+        LoxCallable function = (LoxCallable) callee;
+
+        // 检查参数个数,如果参数的参数和方法定义的参数个数不一致，抛出异常
+        if (arguments.size() != function.arity()) {
+            throw new RuntimeError(expr.paren, "Expected " +
+                    function.arity() + " arguments but got " +
+                    arguments.size() + ".");
+        }
+        return function.call(this, arguments);
+    }
+
+    @Override
     public Object visitLiteralExpr(Expr.Literal expr) {
         // 表达式树的叶子节点——所有其他表达式都由其构成的最小语法单元——是字面量。
         // 字面量几乎已经是值了，但这种区分很重要。字面量是一种能够生成值的语法片段。
@@ -101,9 +150,13 @@ public class Interpreter implements Expr.Visitor<Object>,
         Object left = evaluate(expr.left);
 
         if (expr.operator.type == TokenType.OR) {
-            if (isTruthy(left)) return left;
+            if (isTruthy(left)) {
+                return left;
+            }
         } else {
-            if (!isTruthy(left)) return left;
+            if (!isTruthy(left)) {
+                return left;
+            }
         }
         return evaluate(expr.right);
     }
@@ -158,10 +211,26 @@ public class Interpreter implements Expr.Visitor<Object>,
     }
 
     @Override
+    public Void visitFunctionStmt(Stmt.Function stmt) {
+        LoxFunction function = new LoxFunction(stmt, environment);
+        environment.define(stmt.name.lexeme, function);
+        return null;
+    }
+
+    @Override
     public Void visitPrintStmt(Stmt.Print stmt) {
         Object value = evaluate(stmt.expression);
         System.out.println(stringify(value));
         return null;
+    }
+
+    @Override
+    public Void visitReturnStmt(Stmt.Return stmt) {
+        Object value = null;
+        if (stmt.value != null) {
+            value = evaluate(stmt.value);
+        }
+        throw new Return(value);
     }
 
     @Override
@@ -192,12 +261,16 @@ public class Interpreter implements Expr.Visitor<Object>,
     }
 
     private void checkNumberOperand(Token operator, Object operand) {
-        if (operand instanceof Double) return;
+        if (operand instanceof Double) {
+            return;
+        }
         throw new RuntimeError(operator, "Operand must be a number.");
     }
 
     private void checkNumberOperands(Token operator, Object left, Object right) {
-        if (left instanceof Double && right instanceof Double) return;
+        if (left instanceof Double && right instanceof Double) {
+            return;
+        }
         throw new RuntimeError(operator, "Operand must be a number.");
     }
 
@@ -216,8 +289,8 @@ public class Interpreter implements Expr.Visitor<Object>,
      * 始终使用 finally 子句来恢复之前的环境是很好的实践。
      * 这样，即使抛出异常也能恢复环境。
      */
-    private void executeBlock(List<Stmt> statements,
-                              Environment environment) {
+    void executeBlock(List<Stmt> statements,
+                      Environment environment) {
         Environment previous = this.environment;
 
         try {
@@ -234,20 +307,30 @@ public class Interpreter implements Expr.Visitor<Object>,
     // `false` 和 `nil` 是假值，
     // 其他所有值都是真值。我们这样来实现
     private boolean isTruthy(Object object) {
-        if (object == null) return false;
-        if (object instanceof Boolean) return (boolean) object;
+        if (object == null) {
+            return false;
+        }
+        if (object instanceof Boolean) {
+            return (boolean) object;
+        }
         return true;
     }
 
     private boolean isEqual(Object a, Object b) {
-        if (a == null && b == null) return true;
-        if (a == null) return false;
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null) {
+            return false;
+        }
 
         return a.equals(b);
     }
 
     private String stringify(Object object) {
-        if (object == null) return "nil";
+        if (object == null) {
+            return "nil";
+        }
 
         if (object instanceof Double) {
             String text = object.toString();
